@@ -236,6 +236,12 @@ The salary query should be refused because salary fields are excluded from the C
 
 Regular HRMS screens have their own permissions. The Copilot's data boundary is separate.
 
+## Implementation details
+
+Policy documents are split into chunks and represented as TF-IDF vectors. The policy index is rebuilt per request so newly uploaded policies can be retrieved without a separate indexing job. For a larger library, a persistent index with document-version invalidation would reduce repeated work.
+
+Action execution uses an internal HTTP ASGI transport to call the existing JWT-authenticated FastAPI endpoints. Business validation and role checks remain in those endpoints. The Copilot stores confirmation and audit metadata in `storage/copilot.db`; it does not directly write HR business records.
+
 ## Project structure
 
 ```text
@@ -322,7 +328,7 @@ npm.cmd run typecheck
 npm.cmd run build
 ```
 
-Coverage includes retrieval, query restrictions, role permissions, confirmation handling, and request flows. See the evaluation document for the recorded evidence and limits.
+Coverage includes retrieval, query restrictions, role permissions, confirmation handling, and request flows. Tests copy the seeded business database into a temporary directory rather than creating test requests in the running application's database. See the evaluation document for the recorded evidence and limits.
 
 ## Troubleshooting
 
