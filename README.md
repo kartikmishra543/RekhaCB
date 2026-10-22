@@ -1,10 +1,10 @@
-# RekhaCB — AI HR Copilot
+# RekhaCB — AI-Powered HR Automation
 
 RekhaCB brings everyday HR tasks and an AI assistant into one workspace. Employees can find policy information, explore leave plans, check their records, and prepare requests. Managers can review their team's requests and approve them through the same HR system.
 
 Built as an AI engineering capstone, RekhaCB extends the **CB Nest starter provided by Codebasics**. The original HRMS supplies the business records and APIs; the capstone adds policy retrieval, permission-controlled data queries, confirmed actions, and **Request Readiness**.
 
-> **Repository status:** This repository currently contains the README. The application source and supporting documents still need to be uploaded. Setup commands below apply to the complete project folder.
+> New to the codebase? Start with the [Learner Guide](docs/Learner_Guide.md) for the starter architecture, database, and code walkthrough. For the Copilot additions, see the [AI architecture](docs/ai_architecture.md).
 
 ## What makes it different
 
@@ -35,6 +35,24 @@ Readiness calculations use application rules and HR records. A language model do
 
 Available actions depend on the signed-in user's role. Unsupported operations can be performed through the regular HRMS screens where permitted.
 
+### Core HRMS modules
+
+- JWT authentication with ADMIN, MANAGER, and EMPLOYEE roles.
+- Employee directory with search, filters, and pagination.
+- Attendance clock-in and clock-out with work-mode tracking.
+- Leave balances, applications, and approval workflows.
+- Announcements, polls, and notifications.
+- Team calendar with leave, WFH, holidays, and upcoming birthdays.
+- Profile editing, profile photos, job history, and employee documents.
+- Finance views for salary, statutory information, and payroll history.
+- Ticket assignment, status updates, and onboarding tasks.
+- HR policy upload and download library.
+- Employee document search, viewing, and downloading; self-deletion is limited to the `OTHER` document type.
+- Password-protected PDF payslips using DOB in `DD-MM-YY` format.
+- Notifications for supported announcements, polls, tickets, leave decisions, and documents uploaded by others.
+
+The implemented Copilot endpoints extend the starter's AI contracts; they are no longer described as unimplemented `501` stubs.
+
 ## Technology
 
 | Layer | Stack |
@@ -45,6 +63,28 @@ Available actions depend on the signed-in user's role. Unsupported operations ca
 | Policy retrieval | Document chunks and TF-IDF vectors using scikit-learn |
 | Optional AI provider | OpenAI-compatible chat-completions API |
 | Authentication | JWT and backend role checks |
+
+## Quick start with Docker
+
+Use Docker Desktop with Compose v2. On Windows, enable the WSL 2 backend. Run these commands from the complete project root:
+
+```powershell
+Copy-Item backend/.env.example backend/.env
+```
+
+Edit `backend/.env` and replace the example JWT secret before starting.
+
+```powershell
+docker compose up -d --build
+docker compose exec api python -m alembic upgrade head
+docker compose exec api python scripts/seed.py
+docker compose exec api python scripts/seed_rekha.py
+docker compose ps
+```
+
+Open http://localhost:3000/login. API documentation is available at http://localhost:8000/docs and http://localhost:8000/redoc.
+
+**The seed script resets business data. Use it only for initial setup or a deliberate reset.** For later starts, use `docker compose up -d`.
 
 ## Run locally in VS Code
 
@@ -127,6 +167,21 @@ These accounts contain fictional demonstration data.
 
 Use these credentials only for the local demo.
 
+## Configuration
+
+Backend settings are stored in `backend/.env`; use `backend/.env.example` as the reference.
+
+```dotenv
+APP_NAME=RekhaCB
+APP_TIMEZONE=Asia/Kolkata
+DATABASE_URL=sqlite+aiosqlite:///./storage/rekhacb.db
+JWT_SECRET_KEY=replace-with-a-long-random-secret
+```
+
+The frontend uses `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`. JWT expiry and upload-directory settings are also defined in the backend environment example.
+
+Do not commit `.env` files, API keys, SQLite databases, virtual environments, generated build folders, or `node_modules`.
+
 ## AI configuration
 
 ### Local mode — no API key
@@ -191,7 +246,63 @@ RekhaCB/
 └── docker-compose.yml   # Optional Docker setup
 ```
 
-Supporting documents in the complete project include `docs/ai_architecture.md`, `docs/ai_permissions_matrix.md`, `docs/ai_eval_results.md`, and `docs/demo_walkthrough.md`.
+The backend includes API endpoints, models, schemas, services, Alembic migrations, seed scripts, and tests. Copilot services live under `backend/app/services/ai/`; the frontend Copilot workspace is under `frontend/app/ai-copilot/`.
+
+## Common Docker commands
+
+```powershell
+# Start services
+docker compose up -d
+
+# Restart services
+docker compose restart api web
+
+# Stop services
+docker compose down
+
+# Apply database migrations
+docker compose exec api python -m alembic upgrade head
+
+# Inspect logs
+docker compose logs --tail 100 api web
+```
+
+For dependency or image changes, rebuild with `docker compose up -d --build`. Back up any data you need before deliberately reseeding or resetting the database.
+
+## API notes
+
+- Base path: `/api/v1`.
+- Health checks: `/health` and `/api/v1/health`.
+- Copilot routes: `POST /api/v1/chat/policy`, `/chat/sql`, `/chat/actions`, and `/chat/router` under the same API base.
+- Request Readiness: `POST /api/v1/readiness/analyze` and `POST /api/v1/readiness/prepare`.
+- Employee self-upload: `POST /api/v1/employees/me/documents`.
+- Employee self-delete: `DELETE /api/v1/employees/me/documents/{document_id}`, limited to `OTHER` documents.
+- Staff document and payslip uploads use employee-specific routes and backend role checks.
+
+Standard response format:
+
+```json
+{
+  "success": true,
+  "data": {},
+  "error": null
+}
+```
+
+Errors use `success: false` with an error code and message. See the running API documentation for endpoint schemas and authentication requirements.
+
+## Documentation
+
+- [Learner Guide](docs/Learner_Guide.md)
+- [Product requirements](docs/PRD.md)
+- [Database reference](docs/db_tables_samples.md)
+- [AI architecture](docs/ai_architecture.md)
+- [Copilot permissions](docs/ai_permissions_matrix.md)
+- [Evaluation results](docs/ai_eval_results.md)
+- [Demo walkthrough](docs/demo_walkthrough.md)
+- API reference material: `docs/api/`
+
+Documentation links require the accompanying project files to be present in the repository.
 
 ## Verification
 
@@ -237,3 +348,5 @@ The updated demo video link will be added after publication.
 ## Credits
 
 Capstone project by **Kartik Mishra**, built on the **Codebasics CB Nest starter**. Original copyright notices and applicable terms remain in effect. No additional open-source license is granted by this README.
+
+Copyright (c) Codebasics. All rights reserved.
