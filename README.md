@@ -343,7 +343,7 @@ There is a gap between readiness validation and the final business write. Produc
 
 ## Demo video
 
-The updated demo video link will be added after publication.
+[Watch the RekhaCB capstone project demo on YouTube](https://www.youtube.com/watch?v=tkBHs0jMX-k)
 
 ## Credits
 
