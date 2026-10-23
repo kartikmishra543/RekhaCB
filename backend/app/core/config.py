@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,7 +14,15 @@ class Settings(BaseSettings):
     app_timezone: str = "Asia/Kolkata"
     database_url: str = "sqlite+aiosqlite:///./storage/rekhacb.db"
 
-    jwt_secret_key: str = "change_me"
+    jwt_secret_key: str = ""
+
+    @field_validator("jwt_secret_key", mode="after")
+    @classmethod
+    def validate_jwt_secret(cls, value: str) -> str:
+        if value.strip().lower() == "change_me" or len(value.strip()) < 32:
+            raise ValueError("Set JWT_SECRET_KEY to a unique random secret of at least 32 characters in backend/.env.")
+        return value
+
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7

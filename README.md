@@ -72,7 +72,11 @@ Use Docker Desktop with Compose v2. On Windows, enable the WSL 2 backend. Run th
 Copy-Item backend/.env.example backend/.env
 ```
 
-Edit `backend/.env` and replace the example JWT secret before starting.
+Edit `backend/.env` and replace the example JWT secret before starting. The backend rejects missing secrets, `change_me`, and secrets shorter than 32 characters. Generate a random value and paste it into `JWT_SECRET_KEY`:
+
+```powershell
+py -3.12 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
 
 ```powershell
 docker compose up -d --build
@@ -356,3 +360,7 @@ There is a gap between readiness validation and the final business write. Produc
 Capstone project by **Kartik Mishra**, built on the **Codebasics CB Nest starter**. Original copyright notices and applicable terms remain in effect. No additional open-source license is granted by this README.
 
 Copyright (c) Codebasics. All rights reserved.
+
+## Confirmation retries
+
+A confirmation is claimed immediately before API dispatch, blocking concurrent duplicate execution. Confirmed validation or authorization rejections release the claim so it can be retried within its original five-minute lifetime; correct changed details by preparing a new proposal. Successful submissions cannot be replayed. Connection failures, server errors, or a process crash during dispatch can leave the outcome uncertain: check the HRMS record before preparing another request. This does not provide transactional idempotency across the business and metadata databases.

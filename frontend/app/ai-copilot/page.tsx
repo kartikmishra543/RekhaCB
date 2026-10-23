@@ -15,6 +15,7 @@ type Reply = {
   preview?: unknown;
   result?: unknown;
   status?: string;
+  retry_available?: boolean;
 };
 type Entry = { question: string; reply?: Reply };
 const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -79,7 +80,7 @@ export default function CopilotPage() {
           i === old.length - 1 ? { ...e, reply: body.data } : e,
         ),
       );
-      if (confirmation)
+      if (confirmation && !body.data?.retry_available)
         setEntries((old) =>
           old.map((e) =>
             e.reply?.confirmation_id === confirmation

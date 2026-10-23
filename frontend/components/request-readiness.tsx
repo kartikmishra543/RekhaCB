@@ -136,7 +136,7 @@ export function RequestReadiness() {
         confirmation_id: proposal.confirmation_id,
       });
       setResult(body.data);
-      setProposal(null);
+      if (!body.data?.retry_available) setProposal(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Submission failed");
       setProposal(null);

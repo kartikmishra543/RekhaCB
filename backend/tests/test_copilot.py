@@ -417,3 +417,71 @@ def test_local_leave_type_needs_clarification(client, wording):
     result = chat(client, "actions", f"Apply {wording} from 2028-06-12 to 2028-06-13")
     assert result["status"] == "clarify"
     assert "confirmation_id" not in result
+
+
+@pytest.mark.parametrize("secret", ["", "change_me", "short"])
+def test_settings_reject_unsafe_jwt_secret(secret):
+    from pydantic import ValidationError
+    from app.core.config import Settings
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, jwt_secret_key=secret)
+
+
+def test_settings_accept_random_length_jwt_secret():
+    from app.core.config import Settings
+    assert Settings(_env_file=None, jwt_secret_key="a" * 48).jwt_secret_key == "a" * 48
+
+
+def test_confirmation_can_retry_definite_api_rejection(client, monkeypatch):
+    import httpx
+    proposal = chat(client, "actions", "Create a ticket for VPN failure")
+    key = proposal["confirmation_id"]
+    original = httpx.AsyncClient.request
+
+    async def rejected(*args, **kwargs):
+        return httpx.Response(422, json={"detail": "Validation failed"})
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", rejected)
+    result = chat(client, "actions", "Confirm", confirmation_id=key)
+    assert result["status"] == "rejected" and result["retry_available"]
+    monkeypatch.setattr(httpx.AsyncClient, "request", original)
+    assert chat(client, "actions", "Confirm", confirmation_id=key)["status"] == "completed"
+    assert chat(client, "actions", "Confirm", confirmation_id=key)["status"] == "refused"
+
+
+@pytest.mark.parametrize("outcome", ["exception", "server_error"])
+def test_uncertain_confirmation_cannot_be_replayed(client, monkeypatch, outcome):
+    import httpx
+    proposal = chat(client, "actions", "Create a ticket for VPN failure")
+
+    async def uncertain(*args, **kwargs):
+        if outcome == "exception":
+            raise RuntimeError("Connection lost after dispatch")
+        return httpx.Response(500)
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", uncertain)
+    key = proposal["confirmation_id"]
+    assert chat(client, "actions", "Confirm", confirmation_id=key)["status"] == "uncertain"
+    assert chat(client, "actions", "Confirm", confirmation_id=key)["status"] == "refused"
+
+
+def test_confirmation_rejects_second_dispatch_while_executing(client, monkeypatch):
+    import httpx
+    from types import SimpleNamespace
+    from app.models.enums import Role
+    proposal = chat(client, "actions", "Create a ticket for VPN failure")
+    key = proposal["confirmation_id"]
+    user_id = sqlite3.connect("storage/rekhacb.db").execute(
+        "SELECT id FROM employees WHERE email='employee@mock-hrms.dev'"
+    ).fetchone()[0]
+    calls = []
+
+    async def dispatch(*args, **kwargs):
+        calls.append(1)
+        second = await actions.action(SimpleNamespace(id=user_id, role=Role.EMPLOYEE), "Confirm", key, "unused")
+        assert second["status"] == "refused"
+        return httpx.Response(200, json={"data": {"id": 123}})
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", dispatch)
+    assert chat(client, "actions", "Confirm", confirmation_id=key)["status"] == "completed"
+    assert len(calls) == 1

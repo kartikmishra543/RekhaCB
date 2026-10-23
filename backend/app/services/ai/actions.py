@@ -62,11 +62,6 @@ async def action(user, message, confirmation, token, db=None):
                     "answer": "This confirmation expired or was already used. Please prepare the action again.",
                     "status": "refused",
                 }
-            changed = c.execute(
-                "UPDATE pending SET used=1 WHERE id=? AND used=0", (confirmation,)
-            ).rowcount
-            if not changed:
-                return {"answer": "Action already submitted.", "status": "refused"}
         plan = json.loads(row[0])
     else:
         if "balance" in message.lower():
@@ -229,19 +224,49 @@ async def action(user, message, confirmation, token, db=None):
     # ASGI transport uses the real authenticated route and service validation.
     from app.main import app
 
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://internal"
-    ) as client:
-        response = await client.request(
-            method,
-            "/api/v1" + path,
-            headers={"Authorization": "Bearer " + token},
-            json=payload if method != "GET" else None,
-        )
+    # Claim immediately before dispatch. Existing metadata remains compatible:
+    # 0 = pending, 1 = completed/legacy used, 2 = executing, 3 = uncertain.
+    if confirmation:
+        with store() as c:
+            changed = c.execute(
+                "UPDATE pending SET used=2 WHERE id=? AND user_id=? AND expires>? AND used=0",
+                (confirmation, user.id, time.time()),
+            ).rowcount
+        if not changed:
+            return {"answer": "This action is expired, executing or already submitted. Check the HRMS record before preparing another request.", "status": "refused"}
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://internal"
+        ) as client:
+            response = await client.request(
+                method,
+                "/api/v1" + path,
+                headers={"Authorization": "Bearer " + token},
+                json=payload if method != "GET" else None,
+            )
+    except Exception:
+        if confirmation:
+            with store() as c:
+                c.execute("UPDATE pending SET used=3 WHERE id=? AND used=2", (confirmation,))
+        return {
+            "answer": "The submission outcome is uncertain. Check the HRMS record before preparing another request to avoid duplicates.",
+            "status": "uncertain", "tool": tool,
+        }
+    # Only definite validation/auth rejections can safely release the claim.
+    retry_available = response.status_code in {400, 401, 403, 404, 409, 422}
+    if confirmation:
+        state = 0 if retry_available else (1 if response.status_code < 400 else 3)
+        with store() as c:
+            c.execute("UPDATE pending SET used=? WHERE id=? AND used=2", (state, confirmation))
     if response.status_code >= 400:
         return {
-            "answer": "The HR API rejected the request. Check dates, balance, ownership and required fields in the HRMS screen.",
-            "status": "rejected",
+            "answer": (
+                "The HR API rejected the request. Resolve the issue, then retry this confirmation within five minutes or prepare a corrected request."
+                if retry_available else
+                "The submission outcome is uncertain. Check the HRMS record before preparing another request to avoid duplicates."
+            ),
+            "status": "rejected" if retry_available else "uncertain",
+            "retry_available": retry_available,
             "tool": tool,
         }
     return {
