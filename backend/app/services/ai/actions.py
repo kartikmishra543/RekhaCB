@@ -88,10 +88,16 @@ async def action(user, message, confirmation, token, db=None):
                 dates = re.findall(r"\d{4}-\d{2}-\d{2}", message)
                 q = message.lower()
                 if "leave" in q and ("apply" in q or "request" in q) and dates:
+                    leave_types = set(re.findall(r"\b(sick|casual|earned)\s+leave\b", q))
+                    if len(leave_types) != 1:
+                        return {
+                            "answer": "Please specify one leave type: sick, casual or earned leave.",
+                            "status": "clarify",
+                        }
                     plan = {
                         "tool": "leave",
                         "payload": {
-                            "leave_type": "SICK" if "sick" in q else "CASUAL",
+                            "leave_type": leave_types.pop().upper(),
                             "start_date": dates[0],
                             "end_date": dates[-1],
                             "reason": message,

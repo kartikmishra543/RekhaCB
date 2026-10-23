@@ -397,3 +397,23 @@ def test_readiness_fingerprint_changes_for_different_plan(client):
 def test_readiness_auth_required(client):
     response = client.post("/api/v1/readiness/analyze", json={})
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize("leave_type", ["sick", "casual", "earned"])
+def test_local_leave_type_preserved(client, leave_type):
+    proposal = chat(
+        client, "actions",
+        f"Apply {leave_type} leave from 2028-06-12 to 2028-06-13 for travel",
+    )
+    assert proposal["status"] == "confirmation_required"
+    assert proposal["preview"]["payload"]["leave_type"] == leave_type.upper()
+    result = chat(client, "actions", "Confirm", confirmation_id=proposal["confirmation_id"])
+    assert result["status"] == "completed"
+    assert result["result"]["leave_type"] == leave_type.upper()
+
+
+@pytest.mark.parametrize("wording", ["leave", "unpaid leave", "sick leave or earned leave"])
+def test_local_leave_type_needs_clarification(client, wording):
+    result = chat(client, "actions", f"Apply {wording} from 2028-06-12 to 2028-06-13")
+    assert result["status"] == "clarify"
+    assert "confirmation_id" not in result
