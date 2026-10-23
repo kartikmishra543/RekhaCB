@@ -1,0 +1,55 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> rekhacb-frontend@0.1.0 build
+> next build
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+   ▲ Next.js 15.5.28
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 3.5s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/22) ...
+   Generating static pages (5/22) 
+   Generating static pages (10/22) 
+   Generating static pages (16/22) 
+ ✓ Generating static pages (22/22)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                      123 B         103 kB
+├ ○ /_not-found                            995 B         104 kB
+├ ○ /ai-copilot                           6.1 kB         130 kB
+├ ○ /announcements                       2.12 kB         126 kB
+├ ○ /attendance                          2.27 kB         126 kB
+├ ○ /dashboard                           2.66 kB         126 kB
+├ ○ /employees                            4.1 kB         128 kB
+├ ○ /employees/new                       5.55 kB         129 kB
+├ ○ /employees/payslips                  2.67 kB         126 kB
+├ ○ /employees/projects                  3.11 kB         127 kB
+├ ○ /finance                             3.01 kB         127 kB
+├ ○ /hr-policies                         2.95 kB         127 kB
+├ ○ /leaves                              4.04 kB         128 kB
+├ ○ /login                               1.77 kB         116 kB
+├ ○ /me                                  4.24 kB         128 kB
+├ ○ /me/documents                        2.94 kB         127 kB
+├ ○ /organization                        1.22 kB         125 kB
+├ ○ /polls                               2.01 kB         126 kB
+├ ○ /team-calendar                       2.37 kB         126 kB
+└ ○ /tickets                             2.55 kB         126 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/255-b1e2483a7e02feee.js       46.6 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)          1.92 kB
+
+
+ƒ Middleware                             34.1 kB
+
+○  (Static)  prerendered as static content
+
