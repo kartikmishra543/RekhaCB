@@ -54,3 +54,9 @@ Policy query normalization now maps “leaves” to “leave” before vector lo
 The updated Next.js production build completed successfully, including TypeScript checks and all 22 generated pages. The local API and production web server started successfully. Interactive browser testing could not proceed: the available Playwright runtime had no browser binary, and the browser download returned invalid/truncated archives. No browser click-through, visual QA, clipboard, JSON download or mobile-device behavior is claimed as verified. Before recording, manually test scenario pinning, changing dates, expanding policy context, preparing and confirming, and opening the resulting record in Leaves.
 
 The 39 API/integration tests passed after the readiness changes. They verify the browser's underlying endpoint flow using real authentication, a temporary database and the existing leave API, but do not replace browser testing.
+
+## Semantic RAG upgrade — 24 October 2026
+
+The updated backend suite passes 59 tests with three dependency deprecation warnings. The five original policy questions still run against the offline TF-IDF baseline. New tests verify semantic retrieval-to-generation wiring and source references using mocked embeddings and chat responses, persistent vector reuse, content/deletion/model invalidation, a no-match threshold, explicit embedding-provider failures, generation fallback to evidence, and batching/order/vector validation of the embeddings API adapter.
+
+No live embedding or chat provider was called. Mock vectors prove implementation behavior, not semantic accuracy. Before claiming provider-based RAG quality, configure the selected providers, run the five assignment questions plus paraphrases and unsupported questions, and manually check answer correctness, citations, refusal behavior and the chosen similarity threshold. The default 0.30 threshold is a starting configuration, not a calibrated confidence score.

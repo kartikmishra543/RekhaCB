@@ -485,3 +485,115 @@ def test_confirmation_rejects_second_dispatch_while_executing(client, monkeypatc
     monkeypatch.setattr(httpx.AsyncClient, "request", dispatch)
     assert chat(client, "actions", "Confirm", confirmation_id=key)["status"] == "completed"
     assert len(calls) == 1
+
+
+def test_semantic_rag_retrieval_and_generation(client, monkeypatch, tmp_path):
+    from app.core.config import settings
+    from app.services.ai import vector_store, policy_rag
+    monkeypatch.setattr(settings, "policy_retrieval_mode", "semantic")
+    monkeypatch.setattr(settings, "policy_vector_db", str(tmp_path / "vectors.db"))
+    calls = []
+
+    async def embeddings(texts):
+        calls.append(list(texts))
+        return [[1.0, 0.0] if any(w in t.lower() for w in ["home", "remote"]) else [0.0, 1.0] for t in texts]
+
+    async def generate(system, message):
+        assert "POLICY EXCERPTS:" in message and "untrusted" in system
+        return "Working from home requires manager approval [1]."
+
+    monkeypatch.setattr(vector_store, "embed_texts", embeddings)
+    monkeypatch.setattr(policy_rag, "complete", generate)
+    result = chat(client, "policy", "Can I work remotely?")
+    assert result["retrieval"] == "semantic" and result["mode"] == "llm"
+    assert result["sources"] and "[1]" in result["answer"]
+    assert all("policy_id" in source and "score" in source for source in result["sources"])
+    first = len(calls)
+    chat(client, "policy", "Can I work remotely?")
+    assert len(calls) == first + 1  # Repeated query embeds only the question.
+
+
+def test_vector_index_refreshes_for_content_deletion_and_model(monkeypatch, tmp_path):
+    from app.core.config import settings
+    from app.services.ai import vector_store
+    monkeypatch.setattr(settings, "policy_vector_db", str(tmp_path / "vectors.db"))
+    calls = []
+
+    async def embed(texts):
+        calls.append(texts)
+        return [[1.0, 0.0] for text in texts]
+
+    monkeypatch.setattr(vector_store, "embed_texts", embed)
+    async def run():
+        source = [{"policy_id": 1}, {"policy_id": 2}]
+        await vector_store.search(["old", "removed"], source, "query")
+        await vector_store.search(["old", "removed"], source, "query")
+        assert len(calls) == 3
+        hits = await vector_store.search(["updated"], source[:1], "query")
+        assert hits == [(0, 1.0)] and calls[-2] == ["updated"]
+        monkeypatch.setattr(settings, "ai_embedding_model", "another-model")
+        await vector_store.search(["updated"], source[:1], "query")
+        assert calls[-2] == ["updated"]
+    asyncio.run(run())
+
+
+def test_semantic_rag_provider_failure_does_not_fabricate_answer(client, monkeypatch, tmp_path):
+    from app.core.config import settings
+    from app.services.ai import vector_store
+    monkeypatch.setattr(settings, "policy_retrieval_mode", "semantic")
+    monkeypatch.setattr(settings, "policy_vector_db", str(tmp_path / "vectors.db"))
+
+    async def fail(texts):
+        raise RuntimeError("private provider error")
+
+    monkeypatch.setattr(vector_store, "embed_texts", fail)
+    response = client.post("/api/v1/chat/policy", headers=auth(), json={"message": "What is the leave policy?"}).json()
+    assert not response["success"] and not response["data"]["sources"]
+    assert "private provider" not in str(response)
+
+
+def test_semantic_threshold_refuses_unrelated_question(client, monkeypatch, tmp_path):
+    from app.core.config import settings
+    from app.services.ai import vector_store
+    monkeypatch.setattr(settings, "policy_retrieval_mode", "semantic")
+    monkeypatch.setattr(settings, "policy_vector_db", str(tmp_path / "vectors.db"))
+
+    async def embed(texts):
+        return [[0.0, 1.0] if t == "quasars" else [1.0, 0.0] for t in texts]
+
+    monkeypatch.setattr(vector_store, "embed_texts", embed)
+    assert not chat(client, "policy", "quasars")["sources"]
+
+
+def test_embedding_adapter_orders_batches_and_validates(monkeypatch):
+    import httpx
+    from app.core.config import settings
+    from app.services.ai import embeddings
+    monkeypatch.setattr(settings, "ai_embedding_api_key", "test-key-not-real")
+    original = httpx.AsyncClient
+    sizes = []
+    def handle(request):
+        import json
+        body = json.loads(request.content)
+        sizes.append(len(body["input"]))
+        return httpx.Response(200, json={"data": [
+            {"index": i, "embedding": [float(i + 1), 1.0]}
+            for i in reversed(range(len(body["input"])))
+        ]})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs))
+    result = asyncio.run(embeddings.embed_texts(["text"] * 33))
+    assert sizes == [32, 1] and result[0] == [1.0, 1.0]
+    with pytest.raises(ValueError):
+        embeddings.validate_vectors([[float("nan")]], 1)
+    with pytest.raises(ValueError):
+        embeddings.validate_vectors([[0.0, 0.0]], 1)
+
+
+def test_rag_keeps_evidence_when_generation_is_unavailable(client, monkeypatch):
+    from app.services.ai import policy_rag
+    async def fail(system, message):
+        raise RuntimeError("provider unavailable")
+    monkeypatch.setattr(policy_rag, "complete", fail)
+    result = chat(client, "policy", "What is the leave policy?")
+    assert result["sources"] and result["generation_unavailable"]
+    assert result["mode"] == "local_extractive" and "excerpts" in result["answer"]

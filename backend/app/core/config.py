@@ -1,4 +1,5 @@
-from pydantic import field_validator
+from typing import Literal
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +9,12 @@ class Settings(BaseSettings):
     ai_api_key: str = ""
     ai_base_url: str = "https://api.openai.com/v1"
     ai_model: str = "gpt-4.1-mini"
+    ai_embedding_api_key: str = ""
+    ai_embedding_base_url: str = ""
+    ai_embedding_model: str = "text-embedding-3-small"
+    policy_retrieval_mode: Literal["auto", "semantic", "tfidf"] = "auto"
+    policy_similarity_threshold: float = Field(default=0.30, ge=0, le=1)
+    policy_vector_db: str = "./storage/policy_vectors.db"
 
     app_name: str = "Mock HRMS API"
     environment: str = "dev"

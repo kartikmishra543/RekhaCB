@@ -60,8 +60,8 @@ The implemented Copilot endpoints extend the starter's AI contracts; they are no
 | Frontend | Next.js, React, TypeScript, Tailwind CSS |
 | Backend | Python, FastAPI, SQLAlchemy, Alembic |
 | Database | SQLite with aiosqlite |
-| Policy retrieval | Document chunks and TF-IDF vectors using scikit-learn |
-| Optional AI provider | OpenAI-compatible chat-completions API |
+| Policy RAG | Semantic embeddings, persistent SQLite vector index and cosine search; offline TF-IDF baseline |
+| Optional AI providers | OpenAI-compatible embeddings and chat-completions APIs |
 | Authentication | JWT and backend role checks |
 
 ## Quick start with Docker
@@ -242,7 +242,7 @@ Regular HRMS screens have their own permissions. The Copilot's data boundary is 
 
 ## Implementation details
 
-Policy documents are split into chunks and represented as TF-IDF vectors. The policy index is rebuilt per request so newly uploaded policies can be retrieved without a separate indexing job. For a larger library, a persistent index with document-version invalidation would reduce repeated work.
+Policy documents are split into overlapping chunks. Semantic mode generates embeddings and stores them in a persistent SQLite vector index. Policy content, source metadata, provider and model changes invalidate the index snapshot automatically. Queries use exact cosine search with source references. Auto mode uses semantic retrieval when an API key is configured; without a key, it uses the offline TF-IDF baseline.
 
 Action execution uses an internal HTTP ASGI transport to call the existing JWT-authenticated FastAPI endpoints. Business validation and role checks remain in those endpoints. The Copilot stores confirmation and audit metadata in `storage/copilot.db`; it does not directly write HR business records.
 
@@ -364,3 +364,28 @@ Copyright (c) Codebasics. All rights reserved.
 ## Confirmation retries
 
 A confirmation is claimed immediately before API dispatch, blocking concurrent duplicate execution. Confirmed validation or authorization rejections release the claim so it can be retried within its original five-minute lifetime; correct changed details by preparing a new proposal. Successful submissions cannot be replayed. Connection failures, server errors, or a process crash during dispatch can leave the outcome uncertain: check the HRMS record before preparing another request. This does not provide transactional idempotency across the business and metadata databases.
+
+## Semantic policy RAG setup
+
+The pipeline is **policy ingestion → overlapping chunks → embeddings → persistent vector index → cosine retrieval → grounded LLM answer with sources**. SQLite stores the vectors locally; no separate vector database server or additional Python packages are needed.
+
+In `backend/.env`, configure:
+
+```dotenv
+POLICY_RETRIEVAL_MODE=semantic
+AI_API_KEY=your-chat-provider-key
+AI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4.1-mini
+AI_EMBEDDING_MODEL=text-embedding-3-small
+POLICY_VECTOR_DB=./storage/policy_vectors.db
+POLICY_SIMILARITY_THRESHOLD=0.30
+```
+
+Embedding calls reuse `AI_API_KEY` and `AI_BASE_URL` by default. For a separate embeddings provider, set `AI_EMBEDDING_API_KEY` and `AI_EMBEDDING_BASE_URL` to a service that supports the OpenAI-compatible `/embeddings` contract. Your chat provider may not offer embeddings. An embeddings key alone supports semantic retrieval with excerpt responses; a chat key enables generated answers.
+
+Restart the backend and ask a policy question. The first request builds the vector index; later requests reuse it and embed only the question. Policy uploads, edits and deletions refresh the snapshot on the next query. Responses identify `retrieval: semantic` or `tfidf` and `mode: llm` or `local_extractive`. An embedding-provider failure returns an explicit error; a chat-provider failure returns retrieved excerpts with `generation_unavailable: true`.
+
+For offline use, select `POLICY_RETRIEVAL_MODE=tfidf` or leave `auto` with no keys. TF-IDF is lexical retrieval, not a semantic embedding model. The 0.30 semantic threshold needs evaluation with your actual policies. Policy text and questions go to the embedding provider; selected excerpts and questions go to the chat provider. Keep keys and the generated vector database out of GitHub.
+
+The updated backend suite has **59 passing tests**, including mocked semantic RAG and embeddings API tests. No live provider evaluation was performed; run the five assignment policy questions and paraphrases against your configured providers before claiming answer quality. See `docs/ai_eval_results.md`.
+
