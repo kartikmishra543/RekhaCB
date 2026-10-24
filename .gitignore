@@ -47,3 +47,6 @@ frontend/.env.local
 *.db-*
 *.sqlite
 *.sqlite3
+
+# Private employee import files
+*.private.json

@@ -404,3 +404,16 @@ The runner uses temporary database copies, disables provider calls and writes a 
 New safeguards validate model-generated actions against a fixed tool allowlist and typed payload schemas, reject extra fields and invalid IDs/dates, screen common prompt-override attempts, and check policy citation numbers before displaying generated answers. Invalid generated policy output falls back to retrieved evidence. Existing backend authorization, SQL isolation and confirmation protections remain the security boundaries.
 
 These checks do not prove factual grounding, semantic relevance, or resistance to every prompt injection. Live provider evaluation remains outstanding. See [the guardrails and evaluation guide](docs/ai_guardrails.md) for the exact scope, setup and manual live-review checklist.
+
+## Import an optional private employee profile
+
+Keep employee passwords, contact details, salary, bank information and statutory identifiers in a private local JSON file rather than in this repository. Place the file at `backend/storage/employee_profile.private.json` after initial migration and seeding. From `backend`, run:
+
+```powershell
+$env:PYTHONPATH = "."
+.\.venv\Scripts\python.exe scripts/import_employee.py --profile storage/employee_profile.private.json
+```
+
+Enter the HRMS admin password when prompted. The importer calls the existing admin-only employee creation API, which hashes the employee password and initializes leave balances and statutory payroll fields. Duplicate active emails are rejected. Private field values are not printed. No running server is needed: the script uses the configured local database and the real authenticated API through ASGI transport.
+
+The private JSON uses employee-create field names, with optional `department` containing an existing department name. The starter schema uses `occupancy` for employment type. PAN DOB and employee DOB are separate fields. Identifier length checks do not verify PAN, IFSC, UAN or ESI validity against official registries. Review your inputs before importing. Reseeding resets business data; import optional profiles after seeding. `*.private.json` and runtime databases are ignored by Git.
