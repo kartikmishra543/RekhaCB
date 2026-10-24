@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 import httpx
 from .model import complete
+from .guardrails import validate_action
 
 
 def store():
@@ -135,6 +136,13 @@ async def action(user, message, confirmation, token, db=None):
                         "answer": "Please include the task details. Example: Apply sick leave from 2026-10-22 to 2026-10-23 because of fever.",
                         "status": "clarify",
                     }
+    try:
+        plan = validate_action(plan, stored=bool(confirmation))
+    except (ValueError, TypeError):
+        return {
+            "answer": "The proposed action has invalid or unsupported fields. Please provide the required details and prepare it again.",
+            "status": "clarify",
+        }
     if confirmation and plan.get("requires_readiness"):
         from .readiness import LeavePlan, analyze_leave
 

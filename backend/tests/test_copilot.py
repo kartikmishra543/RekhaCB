@@ -17,6 +17,8 @@ from app.services.ai import actions
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr("app.core.config.settings.ai_api_key", "")
+    monkeypatch.setattr("app.core.config.settings.ai_embedding_api_key", "")
+    monkeypatch.setattr("app.core.config.settings.policy_retrieval_mode", "tfidf")
     source = Path("storage/rekhacb.db").resolve()
     shutil.copy(source, tmp_path / "hrms.db")
     engine = create_async_engine("sqlite+aiosqlite:///" + str(tmp_path / "hrms.db"))
@@ -597,3 +599,56 @@ def test_rag_keeps_evidence_when_generation_is_unavailable(client, monkeypatch):
     result = chat(client, "policy", "What is the leave policy?")
     assert result["sources"] and result["generation_unavailable"]
     assert result["mode"] == "local_extractive" and "excerpts" in result["answer"]
+
+
+import json as _json
+_EVAL_CASES = _json.loads((Path(__file__).resolve().parents[1] / "evals/copilot_cases.json").read_text())
+
+
+@pytest.mark.ai_eval
+@pytest.mark.parametrize("case", _EVAL_CASES, ids=lambda case: case["id"])
+def test_ai_eval_case(client, case):
+    result = chat(client, case["route"], case["message"], case["role"])
+    expected = case["expect"]
+    if expected == "sources":
+        assert result["sources"] and case["keyword"] in result["answer"].lower()
+    elif expected == "no_sources":
+        assert not result["sources"]
+    elif expected == "rows":
+        assert result["rows"]
+        assert not any(key in str(result["rows"]).lower() for key in ["hashed_password", "bank_account_number", "pan_number", "current_salary_usd"])
+    else:
+        assert result["status"] == expected
+        if expected == "confirmation_required":
+            assert result["tool"] == case["tool"] and result["confirmation_id"]
+        else:
+            assert "confirmation_id" not in result
+
+
+@pytest.mark.parametrize("raw", [
+    [], {"tool": "leave", "payload": {"employee_id": 1}},
+    {"tool": "approve", "payload": {"request_id": -1}},
+    {"tool": "approve", "payload": {"request_id": True}},
+    {"tool": "approve", "payload": {"request_id": "1"}},
+    {"tool": "ticket", "payload": {"title": "VPN failure", "description": "Fix VPN", "category": "IT", "priority": "HIGH", "employee_id": 1}},
+    {"tool": "balance", "payload": {}, "url": "https://attacker.invalid"},
+    {"tool": "balance", "payload": {}, "requires_readiness": True},
+])
+def test_untrusted_model_action_schema_rejected(client, monkeypatch, raw):
+    async def model(system, message):
+        return _json.dumps(raw)
+    monkeypatch.setattr(actions, "complete", model)
+    result = chat(client, "actions", "Please help with this request")
+    assert result["status"] == "clarify" and "confirmation_id" not in result
+
+
+@pytest.mark.parametrize("answer", ["You get 999 days off.", "You get 999 days off [99].", "Secret sk-" + "X" * 30 + " [1]."])
+def test_policy_output_guard_falls_back_to_sources(client, monkeypatch, answer):
+    from app.services.ai import policy_rag
+    async def model(system, message):
+        return answer
+    monkeypatch.setattr(policy_rag, "complete", model)
+    result = chat(client, "policy", "What is the leave policy?")
+    assert result["sources"] and result["citation_check_failed"]
+    assert result["mode"] == "local_extractive" and "999" not in result["answer"]
+    assert "sk-" not in result["answer"]

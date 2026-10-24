@@ -7,6 +7,7 @@ from app.models.employee import Employee
 from app.services.ai.policy_rag import answer_policy
 from app.services.ai.sql_agent import query_hr
 from app.services.ai.actions import action, audit, store
+from app.services.ai.guardrails import blocked_instruction
 
 router = APIRouter()
 
@@ -46,6 +47,10 @@ def route(message):
 
 
 async def run(kind, payload, user, db, token):
+    if blocked_instruction(payload.message):
+        result = {"answer": "I cannot bypass permissions, reveal secrets or follow instructions to override safeguards.", "status": "refused", "route": kind, "rows": [], "sources": []}
+        audit(user, kind, result, "[blocked instruction]")
+        return {"success": True, "data": result, "error": None}
     try:
         if kind == "policy":
             result = await answer_policy(db, payload.message)

@@ -60,3 +60,12 @@ The 39 API/integration tests passed after the readiness changes. They verify the
 The updated backend suite passes 59 tests with three dependency deprecation warnings. The five original policy questions still run against the offline TF-IDF baseline. New tests verify semantic retrieval-to-generation wiring and source references using mocked embeddings and chat responses, persistent vector reuse, content/deletion/model invalidation, a no-match threshold, explicit embedding-provider failures, generation fallback to evidence, and batching/order/vector validation of the embeddings API adapter.
 
 No live embedding or chat provider was called. Mock vectors prove implementation behavior, not semantic accuracy. Before claiming provider-based RAG quality, configure the selected providers, run the five assignment questions plus paraphrases and unsupported questions, and manually check answer correctness, citations, refusal behavior and the chosen similarity threshold. The default 0.30 threshold is a starting configuration, not a calibrated confidence score.
+
+## Guardrails and evaluation dataset — 24 October 2026
+
+- Full backend suite: **92 passed**, three dependency deprecation warnings.
+- Offline evaluation runner: **22/22 passed** against the versioned policy/SQL/action/security dataset.
+- Provider usage: none. Dataset cases force TF-IDF/templates; semantic and model-output cases use mocks.
+- New regression checks reject invalid model action objects, unauthorized extra payload fields, invalid IDs, and missing/out-of-range citations.
+
+Run instructions and limits are documented in `docs/ai_guardrails.md`. No live answer factuality score or adversarial robustness guarantee is claimed.

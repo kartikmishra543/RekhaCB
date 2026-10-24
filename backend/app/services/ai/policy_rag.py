@@ -10,6 +10,7 @@ from app.models.hr_policy import HRPolicy
 from app.core.config import settings
 from .model import complete
 from .vector_store import search
+from .guardrails import acceptable_policy_answer
 
 
 async def answer_policy(db, question):
@@ -91,7 +92,11 @@ async def answer_policy(db, question):
     except Exception:
         generated = None
         generation_error = True
+    citation_check_failed = bool(generated) and not acceptable_policy_answer(generated, len(selected))
+    if citation_check_failed:
+        generated = None
     return {
+        "citation_check_failed": citation_check_failed,
         "answer": generated
         or "Relevant policy excerpts (local retrieval mode):\n" + evidence,
         "sources": [sources[i] for i in selected],

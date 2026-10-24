@@ -389,3 +389,18 @@ For offline use, select `POLICY_RETRIEVAL_MODE=tfidf` or leave `auto` with no ke
 
 The updated backend suite has **59 passing tests**, including mocked semantic RAG and embeddings API tests. No live provider evaluation was performed; run the five assignment policy questions and paraphrases against your configured providers before claiming answer quality. See `docs/ai_eval_results.md`.
 
+
+## Evaluations and guardrails
+
+Run the versioned offline policy, SQL, action and security evaluation from `backend`:
+
+```powershell
+$env:PYTHONPATH = "."
+.\.venv\Scripts\python.exe scripts/evaluate_copilot.py
+```
+
+The runner uses temporary database copies, disables provider calls and writes a JSON scorecard to `storage/evals/offline_results.json`. Latest results: **22/22 offline cases passed**, and **92 full backend tests passed**. A checked-in scorecard is in [docs/eval_offline_results.json](docs/eval_offline_results.json).
+
+New safeguards validate model-generated actions against a fixed tool allowlist and typed payload schemas, reject extra fields and invalid IDs/dates, screen common prompt-override attempts, and check policy citation numbers before displaying generated answers. Invalid generated policy output falls back to retrieved evidence. Existing backend authorization, SQL isolation and confirmation protections remain the security boundaries.
+
+These checks do not prove factual grounding, semantic relevance, or resistance to every prompt injection. Live provider evaluation remains outstanding. See [the guardrails and evaluation guide](docs/ai_guardrails.md) for the exact scope, setup and manual live-review checklist.
