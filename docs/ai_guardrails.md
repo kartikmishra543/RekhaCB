@@ -36,3 +36,13 @@ Configure semantic embeddings and a chat model, restart the API, and run the fiv
 Record provider/model, document version, question, answer correctness, citation correctness, refusal behavior, latency and reviewer notes. Test employee, manager and admin access separately; use only fictional records and do not confirm destructive/unauthorized actions. Keep provider responses out of public reports if they contain private data.
 
 The automated results are a regression baseline, not a production safety certification or a guaranteed capstone score.
+
+## Privacy hardening — 24 October 2026
+
+Copilot requests are checked against stored account, PAN, IFSC, phone, DOB, salary, PF UAN and ESI identifiers before routing. Matching private inputs are refused before a provider call. Policy content and source metadata are redacted before indexing, returning excerpts or prompting a provider. The shared model and embedding HTTP adapters also apply pattern redaction. Copilot response text is checked again before returning it. Request Readiness rejects private identifiers in reasons before preview or proposal storage.
+
+AI audit logs now omit message text entirely; they retain user ID, role, route, status, tool, result IDs and timestamps. Existing message fields are scrubbed when the metadata store opens after updating. Confirmed action payloads may still contain ordinary non-sensitive business reasons, stored locally with account-bound confirmation metadata.
+
+The private employee import file and databases stay outside public source. Public source was scanned for the supplied private credentials and identifiers; no matches were found. Finance endpoints remain self-scoped and employee directory responses omit banking, salary and identity fields. Authorized HR screens still display the data they need.
+
+The database and local private JSON are not encrypted at rest by these changes. Backups, access to the computer, screenshots, browser storage, third-party provider retention and identifiers not recognized by the redactor remain outside the proven guarantees. Do not place real credentials or financial identifiers in policy documents. These controls reduce exposure; they do not establish that every possible secret can be detected.

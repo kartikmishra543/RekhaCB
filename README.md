@@ -417,3 +417,11 @@ $env:PYTHONPATH = "."
 Enter the HRMS admin password when prompted. The importer calls the existing admin-only employee creation API, which hashes the employee password and initializes leave balances and statutory payroll fields. Duplicate active emails are rejected. Private field values are not printed. No running server is needed: the script uses the configured local database and the real authenticated API through ASGI transport.
 
 The private JSON uses employee-create field names, with optional `department` containing an existing department name. The starter schema uses `occupancy` for employment type. PAN DOB and employee DOB are separate fields. Identifier length checks do not verify PAN, IFSC, UAN or ESI validity against official registries. Review your inputs before importing. Reseeding resets business data; import optional profiles after seeding. `*.private.json` and runtime databases are ignored by Git.
+
+## Private data handling
+
+Copilot messages containing recognized private identifiers or credentials are refused before provider calls. Pattern checks are supplemented by stored banking, PAN, phone, DOB, salary and statutory identifiers, including values with nonstandard formats. Policy content and metadata are redacted before embedding, provider prompts and excerpt responses. The model/embedding adapters add outbound pattern redaction, and copilot response text is redacted again.
+
+Audit logs omit message text and retain operational metadata only; historical message fields are scrubbed when the metadata store next opens. Private leave reasons are rejected before readiness previews and proposals. Authorized self-service finance screens remain available; the copilot's SQL projection excludes sensitive columns even for admins.
+
+Latest verification: **113 backend tests passed**, including mocked outbound-provider privacy checks. The supplied private profile identifiers and password were absent from the public-source scan. Local private JSON and databases remain outside Git. These files are not encrypted at rest by this feature; protect your computer and backups. Pattern-based controls cannot recognize every possible secret. See [privacy limits and checks](docs/ai_guardrails.md#privacy-hardening--24-october-2026).

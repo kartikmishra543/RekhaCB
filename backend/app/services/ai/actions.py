@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 from .model import complete
 from .guardrails import validate_action
+from .privacy import redact_object
 
 
 def store():
@@ -18,17 +19,14 @@ def store():
     c.execute(
         "CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,user_id INTEGER,role TEXT,intent TEXT,status TEXT,tool TEXT,message TEXT,records TEXT,created REAL)"
     )
+    # Scrub historical raw/redacted messages as well as all new interactions.
+    c.execute("UPDATE audit SET message=? WHERE message<>?", ("[message omitted for privacy]", "[message omitted for privacy]"))
+    c.commit()
     return c
 
 
 def audit(user, intent, result, message):
-    safe = (
-        "[sensitive request redacted]"
-        if re.search(
-            r"password|bank|salary|salaries|pan|token|secret|bearer", message, re.I
-        )
-        else re.sub(r"\S+@\S+|\b\d{6,}\b", "[redacted]", message)
-    )
+    safe = "[message omitted for privacy]"
     record = result.get("result")
     ids = (
         [record["id"]]
@@ -143,6 +141,8 @@ async def action(user, message, confirmation, token, db=None):
             "answer": "The proposed action has invalid or unsupported fields. Please provide the required details and prepare it again.",
             "status": "clarify",
         }
+    if redact_object(plan["payload"]) != plan["payload"]:
+        return {"answer": "Remove private identifiers or credentials from the request before preparing it again.", "status": "refused"}
     if confirmation and plan.get("requires_readiness"):
         from .readiness import LeavePlan, analyze_leave
 

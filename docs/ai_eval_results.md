@@ -69,3 +69,9 @@ No live embedding or chat provider was called. Mock vectors prove implementation
 - New regression checks reject invalid model action objects, unauthorized extra payload fields, invalid IDs, and missing/out-of-range citations.
 
 Run instructions and limits are documented in `docs/ai_guardrails.md`. No live answer factuality score or adversarial robustness guarantee is claimed.
+
+## Privacy boundary verification — 24 October 2026
+
+Full backend suite: **113 passed**, three dependency deprecation warnings. New cases test private-input refusal across four copilot routes, pattern redaction on actual mocked HTTP request bodies for chat and embeddings, nonstandard stored-identifier removal from policy context and responses, private leave-reason refusal, omission/scrubbing of audit messages, safe SQL column sets for all roles, and self-scoped finance endpoints. All provider calls remain mocked or disabled. No supplied private profile values were embedded in the test source or reports.
+
+An exact-value scan of public source found no matches for the supplied private password, phone, account, IFSC, PAN, PF UAN or ESI values. Private local files and runtime databases were excluded from that public-source scan because they intentionally contain the user's local record. This does not prove absence of unknown secrets or constitute a production security audit.

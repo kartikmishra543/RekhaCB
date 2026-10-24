@@ -2,6 +2,7 @@
 
 import math
 import httpx
+from .privacy import redact_text
 from app.core.config import settings
 
 
@@ -36,7 +37,7 @@ async def embed_texts(texts):
             response = await client.post(
                 base.rstrip("/") + "/embeddings",
                 headers={"Authorization": "Bearer " + key},
-                json={"model": settings.ai_embedding_model, "input": batch, "encoding_format": "float"},
+                json={"model": settings.ai_embedding_model, "input": [redact_text(text) for text in batch], "encoding_format": "float"},
             )
             response.raise_for_status()
             data = sorted(response.json()["data"], key=lambda item: item["index"])

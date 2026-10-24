@@ -2,6 +2,7 @@
 
 from app.core.config import settings
 import httpx
+from .privacy import redact_text
 
 
 async def complete(system, message):
@@ -16,10 +17,10 @@ async def complete(system, message):
                 "model": settings.ai_model,
                 "temperature": 0,
                 "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": message},
+                    {"role": "system", "content": redact_text(system)},
+                    {"role": "user", "content": redact_text(message)},
                 ],
             },
         )
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        return redact_text(response.json()["choices"][0]["message"]["content"])

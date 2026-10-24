@@ -202,7 +202,7 @@ def test_audit_redaction(client, monkeypatch):
         saved = c.execute(
             "SELECT message FROM audit ORDER BY id DESC LIMIT 1"
         ).fetchone()[0]
-    assert "123456789" not in saved and "redacted" in saved
+    assert saved == "[message omitted for privacy]"
 
 
 def test_expired_confirmation(client):
@@ -652,3 +652,96 @@ def test_policy_output_guard_falls_back_to_sources(client, monkeypatch, answer):
     assert result["sources"] and result["citation_check_failed"]
     assert result["mode"] == "local_extractive" and "999" not in result["answer"]
     assert "sk-" not in result["answer"]
+
+
+@pytest.mark.parametrize("route", ["policy", "sql", "actions", "router"])
+@pytest.mark.parametrize("text", ["My temporary password: DemoOnly@987", "My bank account is 7318462901", "Contact someone@example.invalid"])
+def test_copilot_private_input_refused_before_provider(client, monkeypatch, route, text):
+    async def forbidden(*args):
+        raise AssertionError("Provider must not be called")
+    monkeypatch.setattr(actions, "complete", forbidden)
+    result = chat(client, route, text)
+    assert result["status"] == "refused" and text not in str(result)
+    with actions.store() as conn:
+        messages = conn.execute("SELECT message FROM audit").fetchall()
+    assert messages and all(row[0] == "[message omitted for privacy]" for row in messages)
+
+
+def test_nonstandard_stored_identifier_not_exposed_to_policy_provider(client, monkeypatch):
+    from sqlalchemy import select
+    from app.models.employee import Employee
+    from app.models.hr_policy import HRPolicy
+    from app.services.ai import policy_rag
+    secret = "PRIVATE-IDENTIFIER-X9"
+    async def setup():
+        async for db in app.dependency_overrides[get_db]():
+            employee = (await db.execute(select(Employee).limit(1))).scalar_one()
+            employee.pan_number = secret
+            db.add(HRPolicy(title="Privacy leave policy", category="TEST", content="Leave requires approval. Private identifier " + secret))
+            await db.commit()
+    asyncio.run(setup())
+    async def provider(system, message):
+        assert secret not in message
+        return "Leave needs approval [1]."
+    monkeypatch.setattr(policy_rag, "complete", provider)
+    result = chat(client, "policy", "What is the leave policy?")
+    assert secret not in str(result)
+    assert chat(client, "policy", "What is " + secret)["status"] == "refused"
+
+
+def test_model_http_boundary_scrubs_raw_sensitive_text(client, monkeypatch):
+    import httpx
+    from app.core.config import settings
+    from app.services.ai import model
+    monkeypatch.setattr(settings, "ai_api_key", "test-only-key")
+    original = httpx.AsyncClient
+    async def run():
+        def handler(request):
+            body = _json.loads(request.content)
+            assert "7318462901" not in str(body) and "someone@example.invalid" not in str(body)
+            return httpx.Response(200, json={"choices": [{"message": {"content": "Result [1]"}}]})
+        monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+        await model.complete("Answer using evidence", "Contact someone@example.invalid at 7318462901")
+    asyncio.run(run())
+
+
+def test_private_leave_reason_blocked_before_preview(client):
+    response = readiness(client, reason="My temporary password: DemoOnly@987")
+    assert response.status_code == 400
+    assert "DemoOnly@987" not in response.text
+
+
+@pytest.mark.parametrize("role", ["EMPLOYEE", "MANAGER", "ADMIN"])
+def test_copilot_scope_has_no_private_columns_even_for_admin(client, role):
+    result = chat(client, "sql", "Show employees", role)
+    forbidden = {"hashed_password", "bank_account_number", "pan_number", "pf_uan", "esi_no", "phone", "date_of_birth", "current_salary_usd"}
+    assert all(not forbidden.intersection(row) for row in result["rows"])
+
+
+def test_finance_profile_is_self_scoped(client):
+    profile = client.get("/api/v1/employees/me", headers=auth()).json()["data"]
+    finance = client.get("/api/v1/finance/profile/me?employee_id=1", headers=auth()).json()["data"]
+    assert finance["employee_id"] == profile["id"]
+    assert client.get("/api/v1/finance/profile/me").status_code == 401
+
+
+def test_existing_audit_messages_scrubbed(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with actions.store() as conn:
+        conn.execute("INSERT INTO audit(message) VALUES(?)", ("Private identifier EXAMPLE-X9",))
+    with actions.store() as conn:
+        assert conn.execute("SELECT message FROM audit").fetchone()[0] == "[message omitted for privacy]"
+
+
+def test_embedding_http_boundary_redacts_private_text(client, monkeypatch):
+    import httpx
+    from app.core.config import settings
+    from app.services.ai import embeddings
+    monkeypatch.setattr(settings, "ai_embedding_api_key", "test-key-only")
+    original = httpx.AsyncClient
+    def handler(request):
+        body = _json.loads(request.content)
+        assert "7318462901" not in str(body)
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0, 0.0]}]})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    asyncio.run(embeddings.embed_texts(["Policy contact 7318462901"]))

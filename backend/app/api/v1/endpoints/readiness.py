@@ -1,7 +1,7 @@
 import json
 import secrets
 import time
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.employee import Employee
@@ -9,6 +9,14 @@ from app.services.auth import get_current_user
 from app.services.ai.readiness import LeavePlan, analyze_leave
 from app.services.ai.actions import audit
 from app.services.ai import actions
+
+from app.services.ai.privacy import load_private_values, redact_text
+
+
+async def check_private_reason(plan, db):
+    if redact_text(plan.reason, await load_private_values(db)) != plan.reason:
+        raise HTTPException(400, "Remove private identifiers or credentials from the leave reason.")
+
 
 router = APIRouter()
 
@@ -19,6 +27,7 @@ async def analyze(
     user: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_private_reason(plan, db)
     result = await analyze_leave(db, user, plan)
     audit(
         user,
@@ -35,6 +44,7 @@ async def prepare(
     user: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_private_reason(plan, db)
     result = await analyze_leave(db, user, plan)
     if not result["can_prepare"]:
         audit(

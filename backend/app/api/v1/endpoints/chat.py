@@ -8,6 +8,7 @@ from app.services.ai.policy_rag import answer_policy
 from app.services.ai.sql_agent import query_hr
 from app.services.ai.actions import action, audit, store
 from app.services.ai.guardrails import blocked_instruction
+from app.services.ai.privacy import load_private_values, private_values, redact_text, redact_object
 
 router = APIRouter()
 
@@ -51,6 +52,12 @@ async def run(kind, payload, user, db, token):
         result = {"answer": "I cannot bypass permissions, reveal secrets or follow instructions to override safeguards.", "status": "refused", "route": kind, "rows": [], "sources": []}
         audit(user, kind, result, "[blocked instruction]")
         return {"success": True, "data": result, "error": None}
+    values = await load_private_values(db)
+    if redact_text(payload.message, values) != payload.message:
+        result = {"answer": "Please remove private identifiers, contact details or credentials from the copilot message. Use the authorized HR screens for private profile data.", "status": "refused", "rows": [], "sources": [], "route": kind}
+        audit(user, kind, result, "[private input refused]")
+        return {"success": True, "data": result, "error": None}
+    privacy_token = private_values.set(values)
     try:
         if kind == "policy":
             result = await answer_policy(db, payload.message)
@@ -65,6 +72,9 @@ async def run(kind, payload, user, db, token):
             "answer": "The copilot could not complete this request. Check server configuration or try again.",
             "status": "error",
         }
+    finally:
+        private_values.reset(privacy_token)
+    result = redact_object(result, values)
     result["route"] = kind
     audit(user, kind, result, payload.message)
     return {"success": result.get("status") != "error", "data": result, "error": None}

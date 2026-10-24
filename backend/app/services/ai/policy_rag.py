@@ -11,10 +11,13 @@ from app.core.config import settings
 from .model import complete
 from .vector_store import search
 from .guardrails import acceptable_policy_answer
+from .privacy import load_private_values, redact_text
 
 
 async def answer_policy(db, question):
     chunks, sources = [], []
+    privacy_values = await load_private_values(db)
+    question = redact_text(question, privacy_values)
     for policy in (await db.execute(select(HRPolicy).order_by(HRPolicy.id))).scalars():
         content = policy.content or ""
         if policy.file_path:
@@ -27,6 +30,8 @@ async def answer_policy(db, question):
                     )
                 elif path.suffix.lower() in (".txt", ".md"):
                     content += "\n" + path.read_text(errors="replace")
+        content = redact_text(content, privacy_values)
+        safe_title = redact_text(policy.title, privacy_values)
         for offset in range(0, len(content), 700):
             chunk = content[offset : offset + 900]
             # Do not place obvious embedded commands in the generation context.
@@ -40,13 +45,13 @@ async def answer_policy(db, question):
                 )
             )
             if chunk.strip():
-                chunks.append(policy.title + "\n" + chunk)
+                chunks.append(safe_title + "\n" + chunk)
                 sources.append(
                     {
                         "policy_id": policy.id,
-                        "title": policy.title,
-                        "category": policy.category,
-                        "filename": policy.original_filename,
+                        "title": safe_title,
+                        "category": redact_text(policy.category, privacy_values),
+                        "filename": redact_text(policy.original_filename, privacy_values),
                         "chunk": offset // 700 + 1,
                     }
                 )
@@ -92,7 +97,11 @@ async def answer_policy(db, question):
     except Exception:
         generated = None
         generation_error = True
-    citation_check_failed = bool(generated) and not acceptable_policy_answer(generated, len(selected))
+    privacy_check_failed = bool(generated) and redact_text(generated, privacy_values) != generated
+    if privacy_check_failed:
+        generated = None
+        generation_error = True
+    citation_check_failed = privacy_check_failed or (bool(generated) and not acceptable_policy_answer(generated, len(selected)))
     if citation_check_failed:
         generated = None
     return {
